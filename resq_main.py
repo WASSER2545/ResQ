@@ -9,24 +9,12 @@ from utils import *
 from statistic_retrieve.statistic_prun import *
 from predicate_tuning.tuning_function import *
 
-SCHEMA = "tpch1g"
-GET_ALL_NAME = f"""
+GET_ALL_NAME = """
     SELECT table_name, column_name, data_type
     FROM information_schema.columns
-    WHERE table_schema = '{SCHEMA}'
+    WHERE table_schema = '{}'
     ORDER BY table_name, ordinal_position
 """
-
-BAN_PREDICATE_COLUMN = {
-    "orders.o_orderpriority",
-}
-
-def get_time():
-    # get local time
-    timestamp = time.time()
-    timestamp = time.strftime("%H:%M:%S", time.localtime(timestamp))
-                        
-    return timestamp
 
 def formulate_col_input(column_names, targets):
     schema_json = json.dumps(column_names, indent=2)
@@ -44,7 +32,7 @@ def formulate_col_input(column_names, targets):
     """
     return template.strip()
 def gen_template(column_names, database, targets):
-    key_path = "/Users/zsy/Documents/codespace/python/FlexBench_original/simulator/rushrush/LLM_new/input/qwen_keys.txt"
+    key_path = "./configs/qwen_keys.txt"
     key = get_key(key_path)
     
     col_gen_prompt = get_template_agent_prompt()
@@ -85,7 +73,7 @@ def get_agg_input(temp_sql):
     return res
 
 def gen_agg_sql(temp_sql):
-    key_path = "/Users/zsy/Documents/codespace/python/FlexBench_original/simulator/rushrush/LLM_new/input/qwen_keys.txt"
+    key_path = "./configs/qwen_keys.txt"
     key = get_key(key_path)
     
     agg_gen_prompt = get_agg_agent_prompt()
@@ -120,7 +108,7 @@ def save_res(config,
              ):
     model_name = config["model_name"]
     workload_name = config["workload_name"]
-    output_path = f"/Users/zsy/Documents/codespace/python/FlexBench_original/Demo1/Agents/output_metrics/{model_name}-{workload_name}-sql-metrics_.json"
+    output_path = f"./outputs/{model_name}-{workload_name}-sql-metrics.json"
     if duration == -1:
         res = {
             "query": out_sql,
@@ -173,58 +161,9 @@ def save_res(config,
                     f.truncate()
                     json.dump(data, f, indent=4)
                     
-def save_his(config, history, path):
+def save_his(history, path):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(history, f, ensure_ascii=False, indent=2)
-
-def update_history(history, info, tar_cpu, tar_scan):
-    query_hash = info["query_hash"]
-    query_param_hash = info["query_param_hash"]
-    cpu = info["cputime"]
-    scan = info["scanbytes"]
-    
-    if not query_param_hash:    # redset
-        main_key = query_hash
-        
-        if main_key not in history:
-            # 添加主键的 Template
-            history[main_key] = {"query_hash": query_hash, "query_param_hash": query_param_hash, "query_info": info}
-        else:
-            his_info = history[main_key]["query_info"]
-            his_cpu = his_info["cputime"]
-            his_scan = his_info["scanbytes"]
-            his_cpu_pe = abs(his_cpu - tar_cpu) / tar_cpu
-            his_scan_pe = abs(his_scan - tar_scan) / max(tar_scan, 0.00001)
-            cpu_pe = abs(cpu - tar_cpu) / tar_cpu
-            scan_pe = abs(scan - tar_scan) / max(tar_scan, 0.00001)
-            if cpu_pe * 0.7 + scan_pe * 0.3 < his_cpu_pe * 0.7 + his_scan_pe * 0.3:
-                history[main_key] = {"query_hash": query_hash, "query_param_hash": query_param_hash, "query_info": info}
-    else:
-        main_key = query_hash
-        sub_key = query_param_hash
-        
-        if main_key not in history:
-            # 添加主键的 Template
-            history[main_key] = {"query_hash": query_hash, "query_param_hash": query_param_hash, "query_info": info}
-            history[main_key][sub_key] = {"query_hash": query_hash, "query_param_hash": query_param_hash, "query_info": info}
-        else:
-            if sub_key not in history[main_key]:
-                # 添加子键的 ans
-                history[main_key][sub_key] = {"query_hash": query_hash, "query_param_hash": query_param_hash, "query_info": info}
-            else:
-                # 更新子键的 ans
-                tmp_his = history[main_key][sub_key]
-                his_info = tmp_his["query_info"]
-                his_cpu = his_info["cputime"]
-                his_scan = his_info["scanbytes"]
-                his_cpu_pe = abs(his_cpu - tar_cpu) / tar_cpu
-                his_scan_pe = abs(his_scan - tar_scan) / tar_scan
-                cpu_pe = abs(cpu - tar_cpu) / tar_cpu
-                scan_pe = abs(scan - tar_scan) / tar_scan
-                if cpu_pe * 0.7 + scan_pe * 0.3 < his_cpu_pe * 0.7 + his_scan_pe * 0.3:
-                    history[main_key][sub_key] = {"query_hash": query_hash, "query_param_hash": query_param_hash, "query_info": info}
-        
-    return history
 
 def update_his(history, info, tar_cpu, tar_scan):
     query_hash = info["query_hash"]
@@ -242,39 +181,11 @@ def string_agg_func(col_name):
     # UPPER(str)
     # return f"SUBSTRING(UPPER({col_name}), 1, 3)"
     return f"MD5({col_name}) AS {col_name}"
-    return f"SUBSTRING({col_name}, 1, 3)"
 
 def num_agg_func(col_name):
     # return f"{col_name} / (SUM({col_name}) OVER() + 1)"
     return f"sin({col_name}) AS {col_name}"
-                    
-def add_cpu_compute(columns, cpu_diff, cpu_tmp, name_to_type):
-    # select compute operation with column type
-    # date/string/num
-    if cpu_diff > cpu_tmp:
-        res = []
-        for table_name in columns.keys():
-            col_list = columns[table_name]
-            for col in col_list:
-                dtype = name_to_type[col].lower()
-                if dtype == "date":
-                    col_operation = date_agg_func(col)
-                    res.append(col_operation)
-                elif dtype == "string" or dtype == "varchar":
-                    col_operation = string_agg_func(col)
-                    res.append(col_operation)
-        return res
-    else:
-        num_col = []
-        for table_name in columns.keys():
-            col_list = columns[table_name]
-            for col in col_list:
-                dtype = name_to_type[col].lower()
-                if any(t in dtype for t in ["int", "decimal", "float", "double"]):
-                    col_operation = num_agg_func(col)
-                    num_col.append(col_operation)
-        return num_col
-    
+                
 def add_cpu(columns, cpu_diff, card, name_to_type):
     cpu_diff = cpu_diff * 1000
     num_weight = num_predict_from_scalar(1, card)
@@ -329,7 +240,7 @@ def get_card(agg_sql, config, database):
     return res[0][0]
 
 def read_meta(database):
-    path = f"/Users/zsy/Documents/codespace/python/FlexBench_original/Demo1/baseline_models/sqlbarber/schema/{database}/{database}_distinct_samples.json"
+    path = f"./schema/{database}/{database}_distinct_samples.json"
     with open(path, "r") as f:
         meta = json.load(f)
         
@@ -337,10 +248,8 @@ def read_meta(database):
 
 def read_his(database, dataset_name, model_name):
     from pathlib import Path
-    path = Path(f"/Users/zsy/Documents/codespace/python/FlexBench_original/Demo1/history/{database}/{dataset_name}_{model_name}_history_.json")
-    # path = f"/Users/zsy/Documents/codespace/python/FlexBench_original/Demo1/history/{database}/{dataset_name}_history.json"
+    path = Path(f"./history/{database}/{dataset_name}_{model_name}_history.json")
     if not path.exists():
-        # return defaultdict(lambda: defaultdict())
         return defaultdict(lambda: list())
     with open(path, "r") as f:
         his = json.load(f)
@@ -348,7 +257,7 @@ def read_his(database, dataset_name, model_name):
     return defaultdict(list, his)
     
 def add_operation_to_sql(config, sql, cols):
-    key_path = "/Users/zsy/Documents/codespace/python/FlexBench_original/simulator/rushrush/LLM_new/input/qwen_keys.txt"
+    key_path = "./configs/qwen_keys.txt"
     key = get_key(key_path)
     
     op_gen_prompt = get_operation_agent_prompt()
@@ -363,7 +272,6 @@ def add_operation_to_sql(config, sql, cols):
     
     database = config["database_choose"]
     
-    # optimizer_knowledge = get_optimizer_knowledge()
     table_schema = get_table_schema(database)
     gen_agent.add_system_message(table_schema)
     
@@ -375,7 +283,7 @@ def add_operation_to_sql(config, sql, cols):
     return sql, token_usage
     
 def gen_predicate(temp_sql, cols):
-    key_path = "/Users/zsy/Documents/codespace/python/FlexBench_original/simulator/rushrush/LLM_new/input/qwen_keys.txt"
+    key_path = "./configs/qwen_keys.txt"
     key = get_key(key_path)
     
     predicate_gen_prompt = get_predicate_agent_prompt()
@@ -385,33 +293,21 @@ def gen_predicate(temp_sql, cols):
         provider="qwen",
         api_key=key,
         base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-        model="qwen-plus-2025-07-28",
+        model="qwen-plus",
         enable_thinking=False,
         system_prompt=predicate_gen_prompt
     )
     
     database = config["database_choose"]
     
-    # optimizer_knowledge = get_optimizer_knowledge()
     table_schema = get_table_schema(database)
     gen_agent.add_system_message(table_schema)
-    
-    # user_input = formulate_add_predicate_input(temp_sql, cols)
-    
+        
 def gen_predicate_loc(temp_sql, cols):
     temp_sql = temp_sql.split(";")[0]
     all_pre = []
     for col in cols:
         pre = col + "<= {}"
-        all_pre.append(pre)
-    predicates = " and ".join(all_pre)
-    return temp_sql + "\nWHERE " + predicates
-
-def gen_predicate_between(temp_sql, cols):
-    temp_sql = temp_sql.split(";")[0]
-    all_pre = []
-    for col in cols:
-        pre = col + " BETWEEN {} and {}"
         all_pre.append(pre)
     predicates = " and ".join(all_pre)
     return temp_sql + "\nWHERE " + predicates
@@ -422,7 +318,7 @@ def choose_predicate(column, name_to_type, meta_info, predicate_num=3):
     for table_name, col_names in column.items():
         col_list = []
         for col_name in col_names:
-            if name_to_type[col_name] == 'String' or name_to_type[col_name] == 'varchar' or col_name in BAN_PREDICATE_COLUMN:
+            if name_to_type[col_name] == 'String' or name_to_type[col_name] == 'varchar':
                 continue
             tmp = table_name + "." + col_name
             info = meta_info[tmp]
@@ -439,16 +335,16 @@ def choose_predicate(column, name_to_type, meta_info, predicate_num=3):
            return col_chosen
     
 def main(config):
-    query_set = config["query"][0]
-    database = config["db"][0]
-    turns = config["turns"]
+    query_set = config["query"]
+    database_list = config["db"]
+    k = config["turns"]
     dataset_name = config["dataset_name"]
     model_name = config["model_name"]
     sql_metrics = read_workload(query_set, dataset_name)
     
     meta_info = read_meta(database)
     
-    query = GET_ALL_NAME
+    query = GET_ALL_NAME.format(database)
     columns = execute_sys_query(config, query, database)
     name_to_type = defaultdict()
     column_to_table = defaultdict()
@@ -457,11 +353,9 @@ def main(config):
         column_to_table[col_name] = table_name
         
     history = read_his(database, dataset_name, model_name)
-    his_path = f"/Users/zsy/Documents/codespace/python/FlexBench_original/Demo1/history/{database}/{dataset_name}_{model_name}_history_.json"
+    his_path = f"./history/{database}/{dataset_name}_{model_name}_history.json"
     
     for idx, metrics in enumerate(sql_metrics):
-        if idx <= 162:
-            continue
         use_history_template = False
         main_key, sub_key = '', ''
         if "bendset" in dataset_name:
@@ -504,60 +398,25 @@ def main(config):
                 agg_sql = infos[mx_idx]["agg_sql"]
                 base_cpu = infos[mx_idx]["base_cpu"]
                 use_history_template = True
-            
-            # if sub_key in history[main_key]:
-            #     info = history[main_key][sub_key]["query_info"]
-            #     
-            #     ans = info["query"]
-            #     real_query_plan = info["query_plan"]
-            #     total_cputime = info["cputime"]
-            #     total_scan = info["scanbytes"]
-            #     
-            #     duration = info["duration"]
-            #     save_res(config, idx, ans, real_query_plan, total_cputime, total_scan, duration, 0, token_use, 0)
-            #     continue
-            # else:
-            #     # read template and info
-            #     info = history[main_key]["query_info"]
-            #     if info["query_param_hash"] == sub_key:
-            #         history[main_key][sub_key] = {"query_hash": main_key, "query_param_hash": sub_key, "query_info": info}
-            #         save_his(config, history, his_path)
-            #         ans = info["query"]
-            #         real_query_plan = info["query_plan"]
-            #         total_cputime = info["cputime"]
-            #         total_scan = info["scanbytes"]
-            #         duration = info["duration"]
-            #         save_res(config, idx, ans, real_query_plan, total_cputime, total_scan, duration, 0, token_use, 0)
-            #         continue
-            #     else:
-            #         use_history_template = True
-            #         col_chosen = info["col_chosen"]
-            #         temp_sql = info["template"]
-            #         agg_sql = info["agg_sql"]
-            #         base_cpu = info["base_cpu"]
         
         if no_need_to_run:
             continue
         cpu_time = metrics["cputime"]
         scan_bytes = metrics["scanbytes"] * (1024 ** 3)
         join, agg, sort = metrics["hash_join_num"], metrics["agg_num"], metrics["sort_num"]
-        # join, agg = metrics["hash_join_num"], metrics["agg_num"]
-        # join, agg = metrics["join"], metrics["agg"]
-        # if join > 0:
-        #     join = 3
-        # else:
-        #     join = 0
+
+        database = choose_database(scan_bytes, join, database_list)
+
         targets = {
             "Join": f"{join}",
-            # "Agg": f"{agg}",
-            # "Sort": f"{sort}"
+            "Agg": f"{agg}",
+            "Sort": f"{sort}"
         }
         ops = {
             "join": join,
             "agg": agg,
-            # "sort": sort
+            "sort": sort
         }
-        k = 1
         
         if use_history_template:
             start_time = time.time()
@@ -618,8 +477,6 @@ def main(config):
                     test_res = test_query(config, temp_sql, database)
                 
                 if test_res == -1:
-                    # wrong query
-                    # TODO: LLM query rewrite
                     continue
                 elif test_res >= 40:
                     total_cputime, total_scan = test_res + base_cpu, base_scan * 1024
@@ -632,9 +489,13 @@ def main(config):
                     )
                 
                 agg_sql, token_usage = gen_agg_sql(temp_sql)
-                # token_use["prompt_tokens"] += token_usage["prompt_tokens"]
-                # token_use["completion_tokens"] += token_usage["completion_tokens"]
-                # token_use["total_tokens"] += token_usage["total_tokens"]
+                token_use["prompt_tokens"] += token_usage["prompt_tokens"]
+                token_use["completion_tokens"] += token_usage["completion_tokens"]
+                token_use["total_tokens"] += token_usage["total_tokens"]
+                
+                # add sort operation part
+                if sort > 0:
+                    temp_sql = add_sort_operation(config, temp_sql, column)
                 
                 # Tuning stage
                 cpu_diff = total_cputime - cpu_time
@@ -642,7 +503,6 @@ def main(config):
                 
                 # If cpu time is not enough, we need to add CPU_compute
                 if cpu_diff / cpu_time < -0.1:
-                    # col_ops = add_cpu_compute(column, -cpu_diff, total_cputime, name_to_type)
                     card = get_card(agg_sql, config, database)
                     col_ops = add_cpu(column, -cpu_diff, card, name_to_type)
                     temp_sql, token_usage = add_operation_to_sql(config, temp_sql, col_ops)
@@ -657,17 +517,11 @@ def main(config):
                         real_run = True
                     )
                     if duration == -1:
-                        # rewrite wrong query
-                        # TODO
                         continue
                     
-                # add sort operation part
-                
                 # Predicate tuning
                 # temporarily choose k columns
-                
                 if (total_cputime - cpu_time) / cpu_time > 0.1:
-                    # 改成选择 range 大，cardinality 大的列
                     col_chosen = choose_predicate(column, name_to_type, meta_info, predicate_num=3)
                     use_bo = True
                     if not col_chosen:
@@ -728,18 +582,17 @@ def main(config):
                             "scanbytes": total_scan,
                             "duration": duration,
                         }
-                    # history = update_history(history, info, cpu_time, scan_bytes)
                     history = update_his(history, info, cpu_time, scan_bytes)
                     save_his(config, history, his_path)
                     save_res(config, idx, temp_sql, real_query_plan, total_cputime, total_scan, duration, turn, token_use, latency)
                     
-                if abs(total_cputime - cpu_time) / cpu_time <= 0.2:
+                if abs(total_cputime - cpu_time) / cpu_time <= 0.1:
                     break
         
         
 
 if __name__ == "__main__":
-    directory = '/Users/zsy/Documents/codespace/python/FlexBench_original/Demo1/Agents/configs'
+    directory = './configs'
     for root, dirs, files in os.walk(directory):
         for file in files:
             if file.endswith('.yml'):
