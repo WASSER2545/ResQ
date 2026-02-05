@@ -5,7 +5,7 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import GradientBoostingRegressor
 
-df = pd.read_csv('/Users/zsy/Documents/codespace/python/FlexBench_original/Demo1/models/performance_predictor/dataset/joins_simple.csv')
+df = pd.read_csv('../dataset/joins_simple.csv')
 
 X = df[['2', '3', '4', '5', '6', '7']] # build rows, probe rows, selectivity, 
 y = df['0']

@@ -49,11 +49,9 @@ def gen_template(column_names, database, targets):
     
     database = config["database_choose"]
     
-    # statistic_knowledge = get_statistic_knowledge(database)
     database_choosing = get_database_scale(database)
     gen_agent.add_system_message(database_choosing)
     
-    # optimizer_knowledge = get_optimizer_knowledge()
     table_schema = get_table_schema(database)
     gen_agent.add_system_message(table_schema)
     

@@ -39,13 +39,13 @@ def formulate_user_input(target):
     return "Your generating target is:\n" + "\n".join(question)
 
 def read_meta():
-    with open("/Users/zsy/Documents/codespace/python/FlexBench_original/Demo1/LLM_new/input/table_schema/table_meta.json", "r") as f:
+    with open("./schema/table_meta.json", "r") as f:
         meta = json.load(f)
     return meta
 
 def read_workload(query_set, database):
     record_file = os.path.join(
-        "/Users/zsy/Documents/codespace/python/FlexBench_original/Demo1/workloads/bendset",
+        "./workloads/bendset",
         f"{query_set}-{database}-sql-metrics.json",
     )
     with open(record_file, "r") as f:
@@ -53,95 +53,9 @@ def read_workload(query_set, database):
     
 def get_table_schema(database):
     database_meta = read_meta()
-        
-    schema = """
+    schema = f"""
     The database schema is:
-    tpc_h_schema = {
-        "Customer": {
-            "c_custkey": "INTEGER",  # Unique identifier for the customer (PK)
-            "c_name": "VARCHAR(25)",  # Name of the customer
-            "c_address": "VARCHAR(40)",  # Address of the customer
-            "c_nationkey": "INTEGER",  # Foreign key to nation table
-            "c_phone": "VARCHAR(15)",  # Phone number of the customer
-            "c_acctbal": "DECIMAL(15,2)",  # Account balance of the customer
-            "c_mktsegment": "VARCHAR(10)",  # Market segment (e.g., 'AUTOMOBILE')
-            "c_comment": "VARCHAR(117)"  # Comment or description
-        },
-        
-        "Nation": {
-            "n_nationkey": "INTEGER",  # Unique identifier for the nation (PK)
-            "n_name": "VARCHAR(25)",  # Name of the nation
-            "n_regionkey": "INTEGER",  # Foreign key to region table
-            "n_comment": "VARCHAR(152)"  # Comment or description
-        },
-        
-        "Region": {
-            "r_regionkey": "INTEGER",  # Unique identifier for the region (PK)
-            "r_name": "VARCHAR(25)",  # Name of the region
-            "r_comment": "VARCHAR(152)"  # Comment or description
-        },
-        
-        "Orders": {
-            "o_orderkey": "INTEGER",  # Unique identifier for the order (PK)
-            "o_custkey": "INTEGER",  # Foreign key to customer table
-            "o_orderstatus": "CHAR(1)",  # Order status ('O', 'F', etc.)
-            "o_totalprice": "DECIMAL(15,2)",  # Total price for the order
-            "o_orderdate": "DATE",  # Date when the order was placed
-            "o_orderpriority": "VARCHAR(15)",  # Priority of the order
-            "o_clerk": "VARCHAR(15)",  # Clerk responsible for the order
-            "o_shippriority": "INTEGER",  # Shipping priority
-            "o_comment": "VARCHAR(79)"  # Comment or description
-        },
-        
-        "Lineitem": {
-            "l_orderkey": "INTEGER",  # Foreign key to orders table
-            "l_partkey": "INTEGER",  # Foreign key to part table
-            "l_suppkey": "INTEGER",  # Foreign key to supplier table
-            "l_linenumber": "INTEGER",  # Line number within the order
-            "l_quantity": "DECIMAL(15,2)",  # Quantity of the item
-            "l_extendedprice": "DECIMAL(15,2)",  # Extended price (price * quantity)
-            "l_discount": "DECIMAL(15,2)",  # Discount on the item
-            "l_tax": "DECIMAL(15,2)",  # Tax on the item
-            "l_returnflag": "CHAR(1)",  # Return flag ('R', 'A', etc.)
-            "l_linestatus": "CHAR(1)",  # Line status ('O', 'F', etc.)
-            "l_shipdate": "DATE",  # Ship date of the item
-            "l_commitdate": "DATE",  # Commit date of the item
-            "l_receiptdate": "DATE",  # Receipt date of the item
-            "l_shipinstruct": "VARCHAR(25)",  # Shipping instructions
-            "l_shipmode": "VARCHAR(10)",  # Shipping mode (e.g., 'AIR', 'TRUCK')
-            "l_comment": "VARCHAR(44)"  # Comment or description
-        },
-        
-        "Part": {
-            "p_partkey": "INTEGER",  # Unique identifier for the part (PK)
-            "p_name": "VARCHAR(55)",  # Name of the part
-            "p_mfgr": "VARCHAR(25)",  # Manufacturer of the part
-            "p_brand": "VARCHAR(10)",  # Brand name of the part
-            "p_type": "VARCHAR(25)",  # Type of the part
-            "p_size": "INTEGER",  # Size of the part
-            "p_container": "VARCHAR(10)",  # Type of container the part is stored in
-            "p_retailprice": "DECIMAL(15,2)",  # Retail price of the part
-            "p_comment": "VARCHAR(23)"  # Comment or description
-        },
-        
-        "Supplier": {
-            "s_suppkey": "INTEGER",  # Unique identifier for the supplier (PK)
-            "s_name": "VARCHAR(25)",  # Name of the supplier
-            "s_address": "VARCHAR(40)",  # Address of the supplier
-            "s_nationkey": "INTEGER",  # Foreign key to nation table
-            "s_phone": "VARCHAR(15)",  # Phone number of the supplier
-            "s_acctbal": "DECIMAL(15,2)",  # Account balance of the supplier
-            "s_comment": "VARCHAR(101)"  # Comment or description
-        },
-        
-        "Partsupp": {
-            "ps_partkey": "INTEGER",  # Foreign key to part table
-            "ps_suppkey": "INTEGER",  # Foreign key to supplier table
-            "ps_availqty": "INTEGER",  # Available quantity of the part
-            "ps_supplycost": "DECIMAL(15,2)",  # Supply cost of the part
-            "ps_comment": "VARCHAR(199)"  # Comment or description
-        }
-    }
+    {database_meta}
     """
     return schema
 
@@ -206,11 +120,6 @@ def get_agg_agent_prompt():
 
     """
     return prompt
-    
-def read_meta():
-    with open("/Users/zsy/Documents/codespace/python/FlexBench_original/Demo1/LLM_new/input/table_schema/table_meta.json", "r") as f:
-        meta = json.load(f)
-    return meta
 
 def get_optimizer_knowledge():
     ans = """
@@ -402,7 +311,6 @@ def test_query_with_feedback(config, query, database):
 def get_query_monitor_info(config, database, q_id):
     max_retry = 20
     for _ in range(max_retry):
-        # 查 profile
         p = f"""
             SELECT profiles
             FROM system_history.profile_history
@@ -410,7 +318,7 @@ def get_query_monitor_info(config, database, q_id):
             LIMIT 1;
         """
         prof = execute_sys_query(config, p, database)
-        if prof and prof[0][0]:  # profiles 字段存在且不为空
+        if prof and prof[0][0]:
             break
         time.sleep(0.5)
     monitor = prof[0][0]

@@ -1,0 +1,10 @@
+query: []
+db: []
+dataset_name: "bendset"
+model_name: "ResQ"
+workload_name: "bendset"
+wait: 8
+turns: 3
+PASSWORD: "***"
+HOST: "****.default.databend.com"
+WAREHOUSE_NAME: "small"

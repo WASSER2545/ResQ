@@ -327,7 +327,6 @@ def parse_operator_info(cur):
     else:
         node_name = cur.name.lower()
         if 'join' in node_name:
-            # val, unit = extract_card_values(cur.attributes.get('estimated rows'))
             val = cur.attributes.get('estimated rows')
             
             build_side = cur.children[0]
